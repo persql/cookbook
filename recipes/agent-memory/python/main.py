@@ -15,7 +15,7 @@ from uuid import uuid4
 from agents import Agent, Runner, function_tool
 from persql import PerSQL
 
-MODEL = "@cf/meta/llama-3.3-70b-instruct"
+MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 
 
 # ---------------------------------------------------------------------------

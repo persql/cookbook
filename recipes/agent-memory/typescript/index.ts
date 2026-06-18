@@ -39,7 +39,7 @@ const memSection =
 
 const agent = new Agent({
   name: "assistant",
-  model: "@cf/meta/llama-3.3-70b-instruct",
+  model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   instructions: `You are a helpful assistant with persistent memory.
 
 MEMORIES — facts saved from previous sessions. Answer questions covered here directly without calling any tool first:

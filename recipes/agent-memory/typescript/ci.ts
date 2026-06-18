@@ -78,7 +78,7 @@ try {
 
     const agent = new Agent({
       name: "ci-agent",
-      model: "@cf/meta/llama-3.3-70b-instruct",
+      model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
       instructions: `You are a helpful assistant.\n\nMEMORIES:\n${memSection}\n\nAnswer questions covered above directly without calling any tool first.`,
       tools: makeMemoryTools(store),
     });

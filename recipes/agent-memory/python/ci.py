@@ -99,7 +99,7 @@ async def main() -> None:
 
             agent = Agent(
                 name="ci-agent",
-                model="@cf/meta/llama-3.3-70b-instruct",
+                model="@cf/meta/llama-3.3-70b-instruct-fp8-fast",
                 instructions=(
                     "You are a helpful assistant.\n\n"
                     f"MEMORIES:\n{mem_section}\n\n"
