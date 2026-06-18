@@ -42,8 +42,7 @@ async def main() -> None:
         claimed = parent.database(PERSQL_DATABASE).branches.claim(
             ref=branch_ref, role="admin", ttl_sec=3600
         )
-        persql = PerSQL(token=claimed["token"])
-        db_path = f"{claimed['namespaceSlug']}/{claimed['databaseSlug']}"
+        db_path = f"{claimed['namespace_slug']}/{claimed['database_slug']}"
         store = MemoryStore(token=claimed["token"], database=db_path)
 
         async def _cleanup() -> None:
