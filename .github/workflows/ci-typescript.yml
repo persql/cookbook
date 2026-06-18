@@ -9,6 +9,17 @@ on:
     paths:
       - "recipes/*/typescript/**"
       - ".github/workflows/ci-typescript.yml"
+  # Fired by the persql monorepo after a deploy/publish completes, so the
+  # recipes are re-tested against the freshly shipped SDK + live API.
+  repository_dispatch:
+    types: [persql-updated]
+  workflow_dispatch:
+
+# A newer trigger (e.g. a fresh SDK publish) cancels a queued/running stale
+# run — only the latest published state is worth testing.
+concurrency:
+  group: ci-typescript-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
