@@ -104,6 +104,46 @@ try {
       `response did not mention price: ${result.finalOutput}`
     );
     console.log(`[ci] agent turn ok — "${result.finalOutput.slice(0, 80)}..."`);
+
+    // 3b. Tool selection (write) — state a NEW fact in plain language and
+    // require the model to persist it by *calling* remember_memory. The
+    // store only mutates through that tool, so a row appearing proves the
+    // model chose the tool (not just narrated saving). The token sku_7f3a
+    // is unguessable, so the later recall can't pass by the model guessing.
+    const writer = new Agent({
+      name: "ci-writer",
+      model: openaiModel,
+      instructions:
+        "You take notes. When the user shares a fact worth keeping, save it " +
+        "with the remember_memory tool using a short kebab-case name.",
+      tools: makeMemoryTools(store),
+    });
+    await run(
+      writer,
+      "Please remember this: the orders table has columns id, total, status, and sku_7f3a."
+    );
+    const persisted = (await store.index()).find((m) =>
+      m.body.toLowerCase().includes("sku_7f3a")
+    );
+    assert.ok(persisted, "agent did not persist the fact via remember_memory");
+    console.log(`[ci] tool-call remember ok — saved "${persisted.name}"`);
+
+    // 3c. Tool selection (recall) — a fresh agent with NO memory injected
+    // must call recall_memory to surface the just-saved fact.
+    const reader = new Agent({
+      name: "ci-reader",
+      model: openaiModel,
+      instructions:
+        "Answer using your memory tools. Call recall_memory to look up what " +
+        "the user asks about before answering.",
+      tools: makeMemoryTools(store),
+    });
+    const recalled = await run(reader, "What columns does the orders table have?");
+    assert.ok(
+      (recalled.finalOutput ?? "").toLowerCase().includes("sku_7f3a"),
+      `recall turn did not surface the saved fact: ${recalled.finalOutput}`
+    );
+    console.log("[ci] tool-call recall ok");
   }
 
   // 4. Forget and confirm gone.

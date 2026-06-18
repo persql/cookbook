@@ -119,6 +119,49 @@ async def main() -> None:
             assert "price" in output.lower(), f"response did not mention price: {output}"
             print(f"[ci] agent turn ok — \"{output[:80]}...\"")
 
+            # 3b. Tool selection (write) — a NEW fact stated in plain language
+            # must be persisted by the model *calling* remember_memory (the
+            # store only mutates through that tool). The token sku_7f3a is
+            # unguessable, so the later recall can't pass by the model guessing.
+            writer = Agent(
+                name="ci-writer",
+                model=model,
+                instructions=(
+                    "You take notes. When the user shares a fact worth keeping, "
+                    "save it with the remember_memory tool using a short "
+                    "kebab-case name."
+                ),
+                tools=make_memory_tools(store),
+            )
+            await Runner.run(
+                writer,
+                "Please remember this: the orders table has columns id, total, "
+                "status, and sku_7f3a.",
+            )
+            persisted = next(
+                (m for m in store.index() if "sku_7f3a" in m["body"].lower()), None
+            )
+            assert persisted, "agent did not persist the fact via remember_memory"
+            print(f"[ci] tool-call remember ok — saved \"{persisted['name']}\"")
+
+            # 3c. Tool selection (recall) — fresh agent, no memory injected,
+            # must call recall_memory to surface the saved fact.
+            reader = Agent(
+                name="ci-reader",
+                model=model,
+                instructions=(
+                    "Answer using your memory tools. Call recall_memory to look "
+                    "up what the user asks about before answering."
+                ),
+                tools=make_memory_tools(store),
+            )
+            recalled = await Runner.run(reader, "What columns does the orders table have?")
+            recalled_out = recalled.final_output or ""
+            assert "sku_7f3a" in recalled_out.lower(), (
+                f"recall turn did not surface the saved fact: {recalled_out}"
+            )
+            print("[ci] tool-call recall ok")
+
         # 4. Forget and confirm gone.
         store.forget("ci-test-fact")
         after = store.recall("widgets price")
