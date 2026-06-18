@@ -1,10 +1,10 @@
 """Headless integration test for the agent-memory recipe.
 
 Local mode  (default, no secrets): PerSQL(local=":memory:")
-  — proves the SDK and MemoryStore API contract.
+  — proves the SDK and MemoryStore API contract. No LLM call.
 
-Remote mode (PERSQL_TOKEN set): hits a real PerSQL database.
-  — proves end-to-end: SDK -> /v1 -> Durable Object.
+Remote mode (PERSQL_TOKEN + CF env vars set): hits real PerSQL + CF Workers AI.
+  — proves end-to-end: SDK -> /v1 -> Durable Object + LLM turn.
 
 Exit 0 on pass, non-zero on failure. No interactive input.
 """
@@ -22,13 +22,12 @@ load_dotenv()
 
 PERSQL_TOKEN = os.environ.get("PERSQL_TOKEN")
 PERSQL_DATABASE = os.environ.get("PERSQL_DATABASE", "ci/agent-memory")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+CF_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+CF_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN")
 
 mode = "remote" if PERSQL_TOKEN else "local"
 print(f"[ci] mode={mode}")
 
-
-# Import here so the local-mode path doesn't need remote deps installed.
 from persql import PerSQL
 from main import MemoryStore, make_memory_tools  # type: ignore[import]
 
@@ -36,12 +35,10 @@ from main import MemoryStore, make_memory_tools  # type: ignore[import]
 def make_store() -> MemoryStore:
     if PERSQL_TOKEN:
         return MemoryStore(token=PERSQL_TOKEN, database=PERSQL_DATABASE)
-    # Local mode: PerSQL in-process SQLite, no network.
-    from persql import PerSQL as _P
 
     class LocalMemoryStore(MemoryStore):
         def __init__(self) -> None:
-            client = _P(local=":memory:")
+            client = PerSQL(local=":memory:")
             self._client = client
             self._db = client.database("test/ci")
             self._ready = False
@@ -68,11 +65,19 @@ async def main() -> None:
     assert "price REAL" in hits[0]["body"], f"unexpected body: {hits[0]['body']}"
     print("[ci] recall ok")
 
-    # 3. Agent turn — should answer from injected memory without a recall tool call.
-    if not OPENAI_API_KEY:
-        print("[ci] OPENAI_API_KEY not set — skipping agent turn")
+    # 3. Agent turn — answer from injected memory without a recall tool call.
+    if not CF_ACCOUNT_ID or not CF_API_TOKEN:
+        print("[ci] CF env vars not set — skipping agent turn")
     else:
-        from agents import Agent, Runner
+        from openai import AsyncOpenAI
+        from agents import Agent, Runner, set_default_openai_client
+
+        set_default_openai_client(
+            AsyncOpenAI(
+                api_key=CF_API_TOKEN,
+                base_url=f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/v1",
+            )
+        )
 
         memories = store.index()
         mem_section = "\n\n".join(
@@ -83,36 +88,36 @@ async def main() -> None:
         recall_called = False
         base_tools = make_memory_tools(store)
 
-        # Wrap recall to track whether it was called.
+        # Wrap recall to detect if it was called (model should NOT call it).
         from agents.tool import FunctionTool  # type: ignore[import]
         wrapped_tools = []
         for t in base_tools:
-            if hasattr(t, "name") and t.name == "recall_memory":
-                original_fn = t.on_invoke_tool  # type: ignore[attr-defined]
+            if getattr(t, "name", None) == "recall_memory":
+                original = t.on_invoke_tool  # type: ignore[attr-defined]
 
-                async def patched(ctx, input, _orig=original_fn):  # noqa: ANN001
+                async def patched(ctx, inp, _orig=original):  # noqa: ANN001
                     nonlocal recall_called
                     recall_called = True
-                    return await _orig(ctx, input)
+                    return await _orig(ctx, inp)
 
-                # Rebuild with patched handler — fall back gracefully if API differs.
                 try:
-                    wrapped = FunctionTool(
-                        name=t.name,
-                        description=t.description,
-                        params_json_schema=t.params_json_schema,
-                        on_invoke_tool=patched,
-                        strict_json_schema=getattr(t, "strict_json_schema", True),
+                    wrapped_tools.append(
+                        FunctionTool(
+                            name=t.name,
+                            description=t.description,
+                            params_json_schema=t.params_json_schema,
+                            on_invoke_tool=patched,
+                            strict_json_schema=getattr(t, "strict_json_schema", True),
+                        )
                     )
-                    wrapped_tools.append(wrapped)
+                    continue
                 except Exception:
-                    wrapped_tools.append(t)
-            else:
-                wrapped_tools.append(t)
+                    pass
+            wrapped_tools.append(t)
 
         agent = Agent(
             name="ci-agent",
-            model="gpt-4o-mini",
+            model="@cf/meta/llama-3.3-70b-instruct",
             instructions=(
                 "You are a helpful assistant.\n\n"
                 f"MEMORIES:\n{mem_section}\n\n"
@@ -125,7 +130,7 @@ async def main() -> None:
         output = result.final_output or ""
         assert output, "agent returned empty output"
         assert "price" in output.lower(), f"response did not mention price: {output}"
-        assert not recall_called, "agent called recall_memory instead of answering from injected memory"
+        assert not recall_called, "agent called recall_memory instead of answering from memory"
         print(f"[ci] agent turn ok — \"{output[:80]}...\"")
 
     # 4. Forget and confirm gone.

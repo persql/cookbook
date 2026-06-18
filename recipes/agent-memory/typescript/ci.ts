@@ -2,30 +2,33 @@
  * Headless integration test for the agent-memory recipe.
  *
  * Local mode  (default, no secrets): PerSQL({ local: ":memory:" })
- *   — proves the SDK and @persql/context API contract.
+ *   — proves the SDK and @persql/context API contract. No LLM call.
  *
- * Remote mode (PERSQL_TOKEN set): hits a real PerSQL database.
- *   — proves end-to-end: SDK → /v1 → Durable Object.
+ * Remote mode (PERSQL_TOKEN + CF env vars set): hits real PerSQL + CF Workers AI.
+ *   — proves end-to-end: SDK → /v1 → Durable Object + LLM turn.
  *
  * Exit 0 on pass, 1 on failure. No interactive input.
  */
 
 import "dotenv/config";
 import assert from "node:assert/strict";
+import OpenAI from "openai";
+import { Agent, run, setDefaultOpenAIClient } from "@openai/agents";
 import { PerSQL } from "@persql/sdk";
 import { context, memoryTools } from "@persql/context";
-import { Agent, run } from "@openai/agents";
 
-const token = process.env.PERSQL_TOKEN;
+const persqlToken = process.env.PERSQL_TOKEN;
+const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+const cfApiToken = process.env.CLOUDFLARE_API_TOKEN;
 const database = process.env.PERSQL_DATABASE ?? "ci/agent-memory";
 
-// Local mode when no token — no network, no cost.
-const persql = token
-  ? new PerSQL({ token })
-  : new PerSQL({ local: ":memory:" });
-
-const mode = token ? "remote" : "local";
+const mode = persqlToken ? "remote" : "local";
 console.log(`[ci] mode=${mode}`);
+
+// Local mode when no token — no network, no cost.
+const persql = persqlToken
+  ? new PerSQL({ token: persqlToken })
+  : new PerSQL({ local: ":memory:" });
 
 const store = context(persql.database(database), { source: "ci" });
 await store.init();
@@ -42,24 +45,27 @@ console.log("[ci] memory saved");
 // 2. Verify it round-trips through recall.
 const hits = await store.recall("widgets price");
 assert.ok(hits.length > 0, "recall returned no results");
-assert.ok(
-  hits[0].body.includes("price REAL"),
-  `unexpected body: ${hits[0].body}`
-);
+assert.ok(hits[0].body.includes("price REAL"), `unexpected body: ${hits[0].body}`);
 console.log("[ci] recall ok");
 
-// 3. Run one agent turn — should answer from injected memory without a tool call.
-if (!process.env.OPENAI_API_KEY) {
-  console.log("[ci] OPENAI_API_KEY not set — skipping agent turn");
+// 3. Run one agent turn — should answer from injected memory without a recall tool call.
+if (!cfAccountId || !cfApiToken) {
+  console.log("[ci] CF env vars not set — skipping agent turn");
 } else {
+  setDefaultOpenAIClient(
+    new OpenAI({
+      apiKey: cfApiToken,
+      baseURL: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1`,
+    })
+  );
+
   const memories = await store.index();
   const memSection = memories
     .map((m) => `[${m.type}] ${m.name}\n${m.description}\n---\n${m.body}`)
     .join("\n\n");
 
-  const tools = memoryTools(store);
   let recallCalled = false;
-  const wrappedTools = tools.map((t) => ({
+  const wrappedTools = memoryTools(store).map((t) => ({
     ...t,
     invoke: async (input: Record<string, unknown>) => {
       if (t.name === "recall_memory") recallCalled = true;
@@ -69,7 +75,7 @@ if (!process.env.OPENAI_API_KEY) {
 
   const agent = new Agent({
     name: "ci-agent",
-    model: "gpt-4o-mini",
+    model: "@cf/meta/llama-3.3-70b-instruct",
     instructions: `You are a helpful assistant.\n\nMEMORIES:\n${memSection}\n\nAnswer questions covered above directly without calling any tool first.`,
     tools: wrappedTools,
   });

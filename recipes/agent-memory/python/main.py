@@ -1,8 +1,7 @@
-"""Agent with persistent memory backed by PerSQL.
+"""Agent with persistent memory backed by PerSQL, running on Cloudflare Workers AI.
 
-Mirrors the TypeScript recipe: full memory bodies are injected into the
-system prompt so the model answers known questions directly, with
-remember/recall/forget tools for runtime management.
+The OpenAI Agents SDK speaks to Cloudflare's OpenAI-compatible endpoint —
+swap the base URL and API key, keep everything else identical.
 """
 
 from __future__ import annotations
@@ -14,20 +13,30 @@ import time
 from uuid import uuid4
 
 from dotenv import load_dotenv
-from agents import Agent, Runner, function_tool
+from openai import AsyncOpenAI
+from agents import Agent, Runner, function_tool, set_default_openai_client
 from persql import PerSQL
 
 load_dotenv()
 
+CF_ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+CF_API_TOKEN = os.environ["CLOUDFLARE_API_TOKEN"]
 PERSQL_TOKEN = os.environ["PERSQL_TOKEN"]
 PERSQL_DATABASE = os.environ["PERSQL_DATABASE"]
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+# Point the Agents SDK at Cloudflare Workers AI.
+set_default_openai_client(
+    AsyncOpenAI(
+        api_key=CF_API_TOKEN,
+        base_url=f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/v1",
+    )
+)
+
+MODEL = "@cf/meta/llama-3.3-70b-instruct"
 
 
 # ---------------------------------------------------------------------------
-# Memory store — thin wrapper over the PerSQL Python SDK.
-# Mirrors the schema of @persql/context so the same database is readable
-# from TypeScript and Python agents.
+# Memory store
 # ---------------------------------------------------------------------------
 
 class MemoryStore:
@@ -72,7 +81,6 @@ class MemoryStore:
                         ")"
                     )
                 },
-                # Keep FTS in sync with the main table.
                 {
                     "sql": (
                         "CREATE TRIGGER IF NOT EXISTS ctx_memory_ai"
@@ -108,7 +116,6 @@ class MemoryStore:
         self._ready = True
 
     def remember(self, name: str, description: str, body: str, type: str = "project") -> None:
-        """UPSERT a named memory. Same name → update."""
         now = int(time.time() * 1000)
         self._db.query(
             "INSERT INTO ctx_memory (id, name, description, type, body, created_at, updated_at)"
@@ -122,7 +129,6 @@ class MemoryStore:
         )
 
     def recall(self, query: str, limit: int = 10) -> list[dict]:
-        """BM25-ranked keyword search. Returns full rows including body."""
         if not query.strip():
             return self.index(limit=limit)
         result = self._db.query(
@@ -133,11 +139,9 @@ class MemoryStore:
         return result["data"]
 
     def forget(self, name: str) -> None:
-        """Hard-delete a memory by name."""
         self._db.query("DELETE FROM ctx_memory WHERE name = ?", [name])
 
     def index(self, limit: int = 50) -> list[dict]:
-        """Name + description + type for all memories, newest first."""
         result = self._db.query(
             "SELECT name, description, type, body FROM ctx_memory"
             " ORDER BY updated_at DESC LIMIT ?",
@@ -147,7 +151,7 @@ class MemoryStore:
 
 
 # ---------------------------------------------------------------------------
-# Tool factory — closures bind the store without globals.
+# Tool factory
 # ---------------------------------------------------------------------------
 
 def make_memory_tools(store: MemoryStore):
@@ -182,19 +186,19 @@ async def main() -> None:
     store = MemoryStore(token=PERSQL_TOKEN, database=PERSQL_DATABASE)
     store.init()
 
-    # Inject full memory bodies so the model can answer without a tool call.
     memories = store.index()
-    if memories:
-        mem_section = "\n\n".join(
+    mem_section = (
+        "\n\n".join(
             f"[{m['type']}] {m['name']}\n{m['description']}\n---\n{m['body']}"
             for m in memories
         )
-    else:
-        mem_section = "No memories saved yet."
+        if memories
+        else "No memories saved yet."
+    )
 
     agent = Agent(
         name="assistant",
-        model=OPENAI_MODEL,
+        model=MODEL,
         instructions=f"""You are a helpful assistant with persistent memory.
 
 MEMORIES — facts saved from previous sessions. Answer questions covered here \

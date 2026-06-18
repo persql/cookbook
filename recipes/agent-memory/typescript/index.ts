@@ -1,40 +1,48 @@
 import "dotenv/config";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { Agent, run } from "@openai/agents";
+import OpenAI from "openai";
+import { Agent, run, setDefaultOpenAIClient } from "@openai/agents";
 import { PerSQL } from "@persql/sdk";
 import { context, memoryTools } from "@persql/context";
 
-const token = process.env.PERSQL_TOKEN;
+const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+const cfApiToken = process.env.CLOUDFLARE_API_TOKEN;
+const persqlToken = process.env.PERSQL_TOKEN;
 const database = process.env.PERSQL_DATABASE;
-if (!token || !database) {
-  console.error("Set PERSQL_TOKEN and PERSQL_DATABASE in .env");
+if (!cfAccountId || !cfApiToken || !persqlToken || !database) {
+  console.error(
+    "Set CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, PERSQL_TOKEN, and PERSQL_DATABASE in .env"
+  );
   process.exit(1);
 }
 
-// One context store per agent / team / project. The database is
-// created automatically the first time you write to it.
-const persql = new PerSQL({ token });
+// Point the OpenAI-compatible client at Cloudflare Workers AI.
+setDefaultOpenAIClient(
+  new OpenAI({
+    apiKey: cfApiToken,
+    baseURL: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1`,
+  })
+);
+
+// One context store per agent / team / project.
+const persql = new PerSQL({ token: persqlToken });
 const store = context(persql.database(database), { source: "agent-memory-recipe" });
 await store.init();
 
 // Load full memory bodies into the system prompt so the model can
 // answer known questions directly — no recall tool call needed.
-const memories = await store.recall("", { limit: 50 });
-
-// Fall back to index (name + description only) when there are no bodies yet.
+const memories = await store.index();
 const memSection =
   memories.length > 0
     ? memories
         .map((m) => `[${m.type}] ${m.name}\n${m.description}\n---\n${m.body}`)
         .join("\n\n")
-    : (await store.index())
-        .map((m) => `[${m.type}] ${m.name} — ${m.description}`)
-        .join("\n") || "No memories saved yet.";
+    : "No memories saved yet.";
 
 const agent = new Agent({
   name: "assistant",
-  model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+  model: "@cf/meta/llama-3.3-70b-instruct",
   instructions: `You are a helpful assistant with persistent memory.
 
 MEMORIES — facts saved from previous sessions. Answer questions covered here directly without calling any tool first:
