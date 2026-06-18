@@ -1,0 +1,28 @@
+name: CI — Python
+
+on:
+  push:
+    paths:
+      - "recipes/*/python/**"
+      - ".github/workflows/ci-python.yml"
+  pull_request:
+    paths:
+      - "recipes/*/python/**"
+      - ".github/workflows/ci-python.yml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        recipe:
+          - agent-memory
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync
+        working-directory: recipes/${{ matrix.recipe }}/python
+      - run: uv run python -m py_compile main.py
+        working-directory: recipes/${{ matrix.recipe }}/python

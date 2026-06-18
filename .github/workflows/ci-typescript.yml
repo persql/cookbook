@@ -1,0 +1,30 @@
+name: CI — TypeScript
+
+on:
+  push:
+    paths:
+      - "recipes/*/typescript/**"
+      - ".github/workflows/ci-typescript.yml"
+  pull_request:
+    paths:
+      - "recipes/*/typescript/**"
+      - ".github/workflows/ci-typescript.yml"
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        recipe:
+          - agent-memory
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: recipes/${{ matrix.recipe }}/typescript/package.json
+      - run: npm install
+        working-directory: recipes/${{ matrix.recipe }}/typescript
+      - run: npx tsc --noEmit
+        working-directory: recipes/${{ matrix.recipe }}/typescript
