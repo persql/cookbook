@@ -3,7 +3,10 @@
 Re-running with the same SESSION_ID replays the stored messages, so the agent
 remembers across process restarts.
 
-    uv sync --extra interactive
+Needs the framework's OpenAI chat client from the `agent-framework` meta
+package (the headless ci.py does not):
+
+    uv pip install agent-framework
     uv run python main.py
 """
 

@@ -8,11 +8,14 @@ dependencies = [
     "python-dotenv >= 1.0",
 ]
 
-# Only the interactive agent (main.py) needs the full framework + an LLM client.
-# CI runs ci.py, which exercises the history provider directly, so this stays
-# out of the default install: `uv sync --extra interactive` to run main.py.
-[project.optional-dependencies]
-interactive = ["agent-framework >= 1.8"]
+# The headless ci.py needs only the adapter (which pulls agent-framework-core).
+# The interactive main.py additionally needs the framework's OpenAI chat client
+# from the `agent-framework` meta package — install it directly to run main.py:
+#   uv pip install agent-framework
+# It is intentionally NOT an optional-dependency here: `uv sync` resolves every
+# extra for its universal lock, and the meta package currently has an
+# unresolvable transitive pin (agent-framework-azure-ai-search ->
+# azure-search-documents), which would break the headless run too.
 
 [tool.uv]
 package = false
