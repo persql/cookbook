@@ -1,13 +1,5 @@
-/**
- * Lightweight memory store over @persql/sdk.
- *
- * Schema matches @persql/context so a TypeScript and Python agent can
- * share the same PerSQL database. Once @persql/context ships memoryTools()
- * on npm this file can be replaced with:
- *
- *   import { context, memoryTools } from "@persql/context";
- */
-
+import { tool } from "@openai/agents";
+import { z } from "zod";
 import type { PerSQLDatabase } from "@persql/sdk";
 
 export type MemoryType = "user" | "feedback" | "project" | "reference";
@@ -118,71 +110,42 @@ export class MemoryStore {
 
 export function makeMemoryTools(store: MemoryStore) {
   return [
-    {
-      type: "function" as const,
+    tool({
       name: "remember_memory",
       description:
         "Save or update a named memory. Use for facts worth keeping across sessions: schema details, user preferences, project decisions. Same name overwrites.",
-      parameters: {
-        type: "object",
-        properties: {
-          name: { type: "string", description: "Short kebab-case key" },
-          description: { type: "string", description: "One-line summary" },
-          type: {
-            type: "string",
-            enum: ["user", "feedback", "project", "reference"],
-          },
-          body: { type: "string", description: "Full content of the memory" },
-        },
-        required: ["name", "description", "body"],
-        additionalProperties: false,
+      parameters: z.object({
+        name: z.string().describe("Short kebab-case key"),
+        description: z.string().describe("One-line summary"),
+        type: z.enum(["user", "feedback", "project", "reference"]).default("project"),
+        body: z.string().describe("Full content of the memory"),
+      }),
+      execute: async ({ name, description, type, body }) => {
+        await store.remember({ name, description, type, body });
+        return JSON.stringify({ saved: name });
       },
-      invoke: async (input: Record<string, unknown>) => {
-        await store.remember({
-          name: String(input.name),
-          description: String(input.description),
-          type: (input.type as MemoryType) ?? "project",
-          body: String(input.body),
-        });
-        return { saved: input.name };
-      },
-    },
-    {
-      type: "function" as const,
+    }),
+    tool({
       name: "recall_memory",
       description:
         "Search memories by keyword (BM25-ranked). Use when the answer might be in memory before querying a live data source.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string" },
-          limit: { type: "number" },
-        },
-        required: ["query"],
-        additionalProperties: false,
+      parameters: z.object({
+        query: z.string(),
+        limit: z.number().int().positive().default(10),
+      }),
+      execute: async ({ query, limit }) => {
+        const rows = await store.recall(query, limit);
+        return JSON.stringify({ memories: rows });
       },
-      invoke: async (input: Record<string, unknown>) => {
-        const rows = await store.recall(
-          String(input.query),
-          typeof input.limit === "number" ? input.limit : 10
-        );
-        return { memories: rows };
-      },
-    },
-    {
-      type: "function" as const,
+    }),
+    tool({
       name: "forget_memory",
       description: "Delete a saved memory by name.",
-      parameters: {
-        type: "object",
-        properties: { name: { type: "string" } },
-        required: ["name"],
-        additionalProperties: false,
+      parameters: z.object({ name: z.string() }),
+      execute: async ({ name }) => {
+        await store.forget(name);
+        return JSON.stringify({ deleted: name });
       },
-      invoke: async (input: Record<string, unknown>) => {
-        await store.forget(String(input.name));
-        return { deleted: input.name };
-      },
-    },
+    }),
   ];
 }

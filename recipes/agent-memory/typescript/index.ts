@@ -17,11 +17,13 @@ if (!cfAccountId || !cfApiToken || !persqlToken || !database) {
   process.exit(1);
 }
 
+// Cast needed: @openai/agents bundles its own openai sub-dep; the types
+// are structurally identical but TypeScript treats them as distinct.
 setDefaultOpenAIClient(
   new OpenAI({
     apiKey: cfApiToken,
     baseURL: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1`,
-  })
+  }) as Parameters<typeof setDefaultOpenAIClient>[0]
 );
 
 const persql = new PerSQL({ token: persqlToken });
