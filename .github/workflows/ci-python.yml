@@ -11,7 +11,7 @@ on:
       - ".github/workflows/ci-python.yml"
 
 jobs:
-  lint:
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -19,10 +19,20 @@ jobs:
           - agent-memory
     steps:
       - uses: actions/checkout@v4
+
       - uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.12"
+
       - run: uv sync
         working-directory: recipes/${{ matrix.recipe }}/python
-      - run: uv run python -m py_compile main.py
+
+      # Run headless CI script.
+      # Local mode (no PERSQL_TOKEN): in-process SQLite, no network, no cost.
+      # Remote mode (secret set):     hits real PerSQL + OpenAI APIs.
+      - run: uv run python ci.py
         working-directory: recipes/${{ matrix.recipe }}/python
+        env:
+          PERSQL_TOKEN: ${{ secrets.PERSQL_TOKEN }}
+          PERSQL_DATABASE: ${{ secrets.PERSQL_DATABASE || 'cookbook/agent-memory-ci' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
