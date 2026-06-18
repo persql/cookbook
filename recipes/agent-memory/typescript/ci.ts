@@ -30,7 +30,7 @@ let cleanup: (() => Promise<void>) | undefined;
 
 if (persqlToken && persqlDatabase) {
   const parent = new PerSQL({ token: persqlToken });
-  const branchRef = `ci-${runId}`;
+  const branchRef = process.env.PERSQL_BRANCH_REF ?? `ci-${runId}`;
   const claimed = await parent.database(persqlDatabase).branches.claim({
     ref: branchRef,
     role: "admin",

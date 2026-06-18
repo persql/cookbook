@@ -2,13 +2,18 @@
 
 Practical recipes for building agents and applications with [PerSQL](https://persql.com).
 
-Each recipe is self-contained, has TypeScript and Python implementations, and runs against a real PerSQL database.
+Each recipe is self-contained, ships TypeScript and/or Python implementations, and runs against a real PerSQL database.
 
 ## Recipes
 
-| Recipe | What it shows |
-|---|---|
-| [agent-memory](recipes/agent-memory/) | Persistent structured memory across agent sessions using `@persql/context` / PerSQL Python SDK |
+| Recipe | Languages | What it shows |
+|---|---|---|
+| [agent-memory](recipes/agent-memory/) | TS · Py | Persistent structured memory (FTS5) across agent sessions, with the OpenAI Agents SDK |
+| [langgraph-checkpointer](recipes/langgraph-checkpointer/) | TS · Py | LangGraph agent state persisted across restarts via the PerSQL checkpointer |
+| [openai-agents-session](recipes/openai-agents-session/) | TS · Py | OpenAI Agents SDK conversation history persisted via a PerSQL session |
+| [google-adk-session](recipes/google-adk-session/) | Py | Google ADK sessions, events, and state on a PerSQL session service |
+| [agent-framework-history](recipes/agent-framework-history/) | Py | Microsoft Agent Framework message history on a PerSQL history provider |
+| [strands-session](recipes/strands-session/) | Py | AWS Strands sessions, agents, and messages on a PerSQL session store |
 
 ## Prerequisites
 
@@ -30,6 +35,8 @@ npm start
 # Python
 cd recipes/<name>/python
 cp .env.example .env
-uv sync
+uv sync            # some recipes: `uv sync --extra interactive` to run the agent
 uv run python main.py
 ```
+
+Each recipe also ships a headless `ci.ts` / `ci.py` that runs without input — local in-process SQLite by default, or against a real PerSQL database (a fresh branch per run) when `PERSQL_TOKEN` is set. These are what CI exercises.

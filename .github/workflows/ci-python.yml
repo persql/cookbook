@@ -28,9 +28,15 @@ jobs:
       id-token: write   # required for persql/setup-db OIDC
       contents: read
     strategy:
+      fail-fast: false
       matrix:
         recipe:
           - agent-memory
+          - langgraph-checkpointer
+          - openai-agents-session
+          - google-adk-session
+          - agent-framework-history
+          - strands-session
     steps:
       - uses: actions/checkout@v4
 
@@ -56,6 +62,9 @@ jobs:
         env:
           PERSQL_TOKEN: ${{ steps.persql.outputs.token }}
           PERSQL_DATABASE: ${{ steps.persql.outputs.namespace }}/${{ steps.persql.outputs.database }}
+          # Unique per matrix job: every recipe shares one run_id, so the
+          # branch ref must include the recipe or they collide on one DB.
+          PERSQL_BRANCH_REF: ci-${{ github.run_id }}-${{ matrix.recipe }}-py
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}

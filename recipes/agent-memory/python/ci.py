@@ -38,7 +38,7 @@ async def main() -> None:
     if PERSQL_TOKEN and PERSQL_DATABASE:
         # Claim a fresh branch per run for isolation.
         parent = PerSQL(token=PERSQL_TOKEN)
-        branch_ref = f"ci-{RUN_ID}"
+        branch_ref = os.environ.get("PERSQL_BRANCH_REF") or f"ci-{RUN_ID}"
         claimed = parent.database(PERSQL_DATABASE).branches.claim(
             ref=branch_ref, role="admin", ttl_sec=3600
         )
