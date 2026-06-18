@@ -1,14 +1,22 @@
 import "dotenv/config";
 import assert from "node:assert/strict";
 import OpenAI from "openai";
-import { Agent, run, setDefaultOpenAIClient, setTracingDisabled } from "@openai/agents";
+import {
+  Agent,
+  run,
+  setDefaultOpenAIClient,
+  setOpenAIAPI,
+  setTracingDisabled,
+} from "@openai/agents";
 import { PerSQL } from "@persql/sdk";
 import { MemoryStore, makeMemoryTools } from "./memory.js";
 
 const persqlToken = process.env.PERSQL_TOKEN;
 const persqlDatabase = process.env.PERSQL_DATABASE;
-const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-const cfApiToken = process.env.CLOUDFLARE_API_TOKEN;
+const openaiKey = process.env.OPENAI_API_KEY;
+// Optional OpenAI-compatible gateway. Unset → the SDK's default OpenAI API.
+const openaiBaseUrl = process.env.OPENAI_BASE_URL;
+const openaiModel = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const runId = process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
 
 const mode = persqlToken ? "remote" : "local";
@@ -60,18 +68,22 @@ try {
   console.log("[ci] recall ok");
 
   // 3. Agent turn — answer from injected memory, no recall tool call.
-  if (!cfAccountId || !cfApiToken) {
-    console.log("[ci] CF env vars not set — skipping agent turn");
+  // @openai/agents reads OPENAI_API_KEY from the environment automatically.
+  if (!openaiKey) {
+    console.log("[ci] OPENAI_API_KEY not set — skipping agent turn");
   } else {
-    // Cast needed: @openai/agents bundles its own nested openai sub-dep.
-    setDefaultOpenAIClient(
-      new OpenAI({
-        apiKey: cfApiToken,
-        baseURL: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1`,
-      }) as unknown as Parameters<typeof setDefaultOpenAIClient>[0]
-    );
-    // No OpenAI key here, so the default trace exporter would 401.
-    setTracingDisabled(true);
+    if (openaiBaseUrl) {
+      // Custom gateway: cast needed (@openai/agents bundles a nested openai
+      // sub-dep). Gateways speak /chat/completions, not /responses, and have
+      // no platform.openai.com tracing.
+      setDefaultOpenAIClient(
+        new OpenAI({ apiKey: openaiKey, baseURL: openaiBaseUrl }) as unknown as Parameters<
+          typeof setDefaultOpenAIClient
+        >[0]
+      );
+      setOpenAIAPI("chat_completions");
+      setTracingDisabled(true);
+    }
 
     const memories = await store.index();
     const memSection = memories
@@ -80,7 +92,7 @@ try {
 
     const agent = new Agent({
       name: "ci-agent",
-      model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      model: "gpt-4o-mini",
       instructions: `You are a helpful assistant.\n\nMEMORIES:\n${memSection}\n\nAnswer questions covered above directly without calling any tool first.`,
       tools: makeMemoryTools(store),
     });

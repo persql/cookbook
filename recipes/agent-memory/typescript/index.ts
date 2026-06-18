@@ -2,30 +2,37 @@ import "dotenv/config";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import OpenAI from "openai";
-import { Agent, run, setDefaultOpenAIClient, setTracingDisabled } from "@openai/agents";
+import {
+  Agent,
+  run,
+  setDefaultOpenAIClient,
+  setOpenAIAPI,
+  setTracingDisabled,
+} from "@openai/agents";
 import { PerSQL } from "@persql/sdk";
 import { MemoryStore, makeMemoryTools } from "./memory.js";
 
-const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-const cfApiToken = process.env.CLOUDFLARE_API_TOKEN;
+// @openai/agents reads OPENAI_API_KEY from the environment automatically.
+const openaiKey = process.env.OPENAI_API_KEY;
 const persqlToken = process.env.PERSQL_TOKEN;
 const database = process.env.PERSQL_DATABASE;
-if (!cfAccountId || !cfApiToken || !persqlToken || !database) {
-  console.error(
-    "Set CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, PERSQL_TOKEN, and PERSQL_DATABASE in .env"
-  );
+if (!openaiKey || !persqlToken || !database) {
+  console.error("Set OPENAI_API_KEY, PERSQL_TOKEN, and PERSQL_DATABASE in .env");
   process.exit(1);
 }
 
-// Cast needed: @openai/agents bundles its own nested openai sub-dep.
-setDefaultOpenAIClient(
-  new OpenAI({
-    apiKey: cfApiToken,
-    baseURL: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1`,
-  }) as unknown as Parameters<typeof setDefaultOpenAIClient>[0]
-);
-// No OpenAI key here, so the default trace exporter would 401.
-setTracingDisabled(true);
+// Optional OpenAI-compatible gateway. Unset → the SDK's default OpenAI API.
+const openaiBaseUrl = process.env.OPENAI_BASE_URL;
+const openaiModel = process.env.OPENAI_MODEL || "gpt-4o-mini";
+if (openaiBaseUrl) {
+  setDefaultOpenAIClient(
+    new OpenAI({ apiKey: openaiKey, baseURL: openaiBaseUrl }) as unknown as Parameters<
+      typeof setDefaultOpenAIClient
+    >[0]
+  );
+  setOpenAIAPI("chat_completions");
+  setTracingDisabled(true);
+}
 
 const persql = new PerSQL({ token: persqlToken });
 const store = new MemoryStore(persql.database(database));
@@ -41,7 +48,7 @@ const memSection =
 
 const agent = new Agent({
   name: "assistant",
-  model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  model: openaiModel,
   instructions: `You are a helpful assistant with persistent memory.
 
 MEMORIES — facts saved from previous sessions. Answer questions covered here directly without calling any tool first:

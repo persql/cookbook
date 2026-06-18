@@ -117,8 +117,6 @@ export function makeMemoryTools(store: MemoryStore) {
       name: "remember_memory",
       description:
         "Save or update a named memory. Use for facts worth keeping across sessions: schema details, user preferences, project decisions. Same name overwrites.",
-      // CF Workers AI's OpenAI-compat validator rejects any tool param
-      // without a description — every field below must be .describe()'d.
       parameters: z.object({
         name: z.string().describe("Short kebab-case key"),
         description: z.string().describe("One-line summary"),

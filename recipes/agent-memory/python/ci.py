@@ -5,7 +5,7 @@ Local mode  (default, no secrets): PerSQL(local=":memory:")
 
 Remote mode (PERSQL_TOKEN + PERSQL_DATABASE set): claims a fresh branch
   per run for isolation, runs tests, deletes the branch on exit.
-  With CF env vars also set: proves the full agent turn end-to-end.
+  With OPENAI_API_KEY also set: proves the full agent turn end-to-end.
 
 Exit 0 on pass, non-zero on failure. No interactive input.
 """
@@ -22,8 +22,7 @@ load_dotenv()
 
 PERSQL_TOKEN = os.environ.get("PERSQL_TOKEN")
 PERSQL_DATABASE = os.environ.get("PERSQL_DATABASE")
-CF_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
-CF_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 RUN_ID = os.environ.get("GITHUB_RUN_ID") or str(int(time.time()))
 
 mode = "remote" if PERSQL_TOKEN else "local"
@@ -78,8 +77,8 @@ async def main() -> None:
         print("[ci] recall ok")
 
         # 3. Agent turn — answer from injected memory without a recall tool call.
-        if not CF_ACCOUNT_ID or not CF_API_TOKEN:
-            print("[ci] CF env vars not set — skipping agent turn")
+        if not OPENAI_API_KEY:
+            print("[ci] OPENAI_API_KEY not set — skipping agent turn")
         else:
             from openai import AsyncOpenAI
             from agents import (
@@ -89,18 +88,14 @@ async def main() -> None:
                 set_tracing_disabled,
             )
 
-            # No OpenAI key here, so the default trace exporter would 401.
+            openai_base_url = os.environ.get("OPENAI_BASE_URL") or None
+            openai_model = os.environ.get("OPENAI_MODEL") or "gpt-4o-mini"
+
+            # Custom gateway: speaks /chat/completions, not /responses, and has
+            # no platform.openai.com tracing.
             set_tracing_disabled(True)
-            cf_client = AsyncOpenAI(
-                api_key=CF_API_TOKEN,
-                base_url=f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/v1",
-            )
-            # Wrap explicitly: a bare "@cf/..." model string trips the SDK's
-            # provider-prefix parser ("Unknown prefix: @cf").
-            model = OpenAIChatCompletionsModel(
-                model="@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-                openai_client=cf_client,
-            )
+            client = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url=openai_base_url)
+            model = OpenAIChatCompletionsModel(model=openai_model, openai_client=client)
 
             memories = store.index()
             mem_section = "\n\n".join(

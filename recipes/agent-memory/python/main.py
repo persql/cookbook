@@ -1,7 +1,7 @@
-"""Agent with persistent memory backed by PerSQL, running on Cloudflare Workers AI.
+"""Agent with persistent memory backed by PerSQL, on the OpenAI Agents SDK.
 
-The OpenAI Agents SDK speaks to Cloudflare's OpenAI-compatible endpoint —
-swap the base URL and API key, keep everything else identical.
+Point it at any OpenAI-compatible endpoint via OPENAI_BASE_URL — the base URL
+and API key are the only things that change.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from uuid import uuid4
 from agents import Agent, Runner, function_tool
 from persql import PerSQL
 
-MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+MODEL = "gpt-4o-mini"
 
 
 # ---------------------------------------------------------------------------
@@ -194,20 +194,18 @@ async def main() -> None:
 
     load_dotenv()
 
-    cf_account_id = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-    cf_api_token = os.environ["CLOUDFLARE_API_TOKEN"]
     persql_token = os.environ["PERSQL_TOKEN"]
     persql_database = os.environ["PERSQL_DATABASE"]
+    openai_api_key = os.environ["OPENAI_API_KEY"]
+    # Optional OpenAI-compatible gateway. Unset → the SDK's default OpenAI API.
+    openai_base_url = os.environ.get("OPENAI_BASE_URL") or None
+    openai_model = os.environ.get("OPENAI_MODEL") or MODEL
 
-    # No OpenAI key here, so the default trace exporter would 401.
+    # Custom gateway: speaks /chat/completions, not /responses, and has no
+    # platform.openai.com tracing.
     set_tracing_disabled(True)
-    cf_client = AsyncOpenAI(
-        api_key=cf_api_token,
-        base_url=f"https://api.cloudflare.com/client/v4/accounts/{cf_account_id}/ai/v1",
-    )
-    # Wrap explicitly: a bare "@cf/..." model string trips the SDK's
-    # provider-prefix parser ("Unknown prefix: @cf").
-    model = OpenAIChatCompletionsModel(model=MODEL, openai_client=cf_client)
+    client = AsyncOpenAI(api_key=openai_api_key, base_url=openai_base_url)
+    model = OpenAIChatCompletionsModel(model=openai_model, openai_client=client)
 
     store = MemoryStore(token=persql_token, database=persql_database)
     store.init()
