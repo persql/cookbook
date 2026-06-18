@@ -13,6 +13,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for persql/setup-db OIDC
+      contents: read
     strategy:
       matrix:
         recipe:
@@ -31,13 +34,20 @@ jobs:
       - run: npx tsc --noEmit
         working-directory: recipes/${{ matrix.recipe }}/typescript
 
+      # Provision a repo-scoped PerSQL database via OIDC (no secret needed).
+      # Each run claims a fresh branch for isolation and deletes it on exit.
+      # Requires the PerSQL GitHub App to be installed on this repo.
+      - uses: persql/setup-db@v1
+        id: persql
+        continue-on-error: true   # fall back to local mode if App not installed
+
       # Run headless CI script.
-      # Local mode (no PERSQL_TOKEN): in-process SQLite, no network, no cost.
-      # Remote mode (secret set):     hits real PerSQL + OpenAI APIs.
+      # Local mode  (App not installed): in-process SQLite, no network, no cost.
+      # Remote mode (App installed):     claims a branch per run, tests, cleans up.
       - run: npx tsx ci.ts
         working-directory: recipes/${{ matrix.recipe }}/typescript
         env:
-          PERSQL_TOKEN: ${{ secrets.PERSQL_TOKEN }}
-          PERSQL_DATABASE: ${{ secrets.PERSQL_DATABASE || 'cookbook/agent-memory-ci' }}
+          PERSQL_TOKEN: ${{ steps.persql.outputs.token }}
+          PERSQL_DATABASE: ${{ steps.persql.outputs.namespace }}/${{ steps.persql.outputs.database }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
