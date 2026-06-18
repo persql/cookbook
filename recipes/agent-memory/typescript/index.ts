@@ -4,7 +4,7 @@ import { stdin as input, stdout as output } from "node:process";
 import OpenAI from "openai";
 import { Agent, run, setDefaultOpenAIClient } from "@openai/agents";
 import { PerSQL } from "@persql/sdk";
-import { context, memoryTools } from "@persql/context";
+import { MemoryStore, makeMemoryTools } from "./memory.js";
 
 const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 const cfApiToken = process.env.CLOUDFLARE_API_TOKEN;
@@ -17,7 +17,6 @@ if (!cfAccountId || !cfApiToken || !persqlToken || !database) {
   process.exit(1);
 }
 
-// Point the OpenAI-compatible client at Cloudflare Workers AI.
 setDefaultOpenAIClient(
   new OpenAI({
     apiKey: cfApiToken,
@@ -25,13 +24,10 @@ setDefaultOpenAIClient(
   })
 );
 
-// One context store per agent / team / project.
 const persql = new PerSQL({ token: persqlToken });
-const store = context(persql.database(database), { source: "agent-memory-recipe" });
+const store = new MemoryStore(persql.database(database));
 await store.init();
 
-// Load full memory bodies into the system prompt so the model can
-// answer known questions directly — no recall tool call needed.
 const memories = await store.index();
 const memSection =
   memories.length > 0
@@ -52,17 +48,15 @@ ${memSection}
 Use remember_memory to save new facts worth keeping (schema details, preferences, decisions).
 Use recall_memory to search for something not shown above.
 Use forget_memory to remove stale entries.`,
-  tools: memoryTools(store),
+  tools: makeMemoryTools(store),
 });
 
-// Simple REPL — type "exit" to quit.
 const rl = readline.createInterface({ input, output });
 console.log('Agent ready. Type a message or "exit" to quit.\n');
 
 while (true) {
   const userInput = await rl.question("> ");
   if (userInput.trim().toLowerCase() === "exit") break;
-
   const result = await run(agent, userInput);
   console.log(`\n${result.finalOutput}\n`);
 }

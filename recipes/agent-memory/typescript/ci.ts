@@ -1,21 +1,9 @@
-/**
- * Headless integration test for the agent-memory recipe.
- *
- * Local mode  (default, no secrets): PerSQL({ local: ":memory:" })
- *   — proves the SDK and @persql/context API contract. No LLM call.
- *
- * Remote mode (PERSQL_TOKEN + CF env vars set): hits real PerSQL + CF Workers AI.
- *   — proves end-to-end: SDK → /v1 → Durable Object + LLM turn.
- *
- * Exit 0 on pass, 1 on failure. No interactive input.
- */
-
 import "dotenv/config";
 import assert from "node:assert/strict";
 import OpenAI from "openai";
 import { Agent, run, setDefaultOpenAIClient } from "@openai/agents";
 import { PerSQL } from "@persql/sdk";
-import { context, memoryTools } from "@persql/context";
+import { MemoryStore, makeMemoryTools } from "./memory.js";
 
 const persqlToken = process.env.PERSQL_TOKEN;
 const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -25,12 +13,11 @@ const database = process.env.PERSQL_DATABASE ?? "ci/agent-memory";
 const mode = persqlToken ? "remote" : "local";
 console.log(`[ci] mode=${mode}`);
 
-// Local mode when no token — no network, no cost.
 const persql = persqlToken
   ? new PerSQL({ token: persqlToken })
   : new PerSQL({ local: ":memory:" });
 
-const store = context(persql.database(database), { source: "ci" });
+const store = new MemoryStore(persql.database(database));
 await store.init();
 
 // 1. Save a known memory.
@@ -42,13 +29,13 @@ await store.remember({
 });
 console.log("[ci] memory saved");
 
-// 2. Verify it round-trips through recall.
+// 2. Round-trip via recall.
 const hits = await store.recall("widgets price");
 assert.ok(hits.length > 0, "recall returned no results");
 assert.ok(hits[0].body.includes("price REAL"), `unexpected body: ${hits[0].body}`);
 console.log("[ci] recall ok");
 
-// 3. Run one agent turn — should answer from injected memory without a recall tool call.
+// 3. Agent turn — answer from injected memory, no recall tool call.
 if (!cfAccountId || !cfApiToken) {
   console.log("[ci] CF env vars not set — skipping agent turn");
 } else {
@@ -65,7 +52,7 @@ if (!cfAccountId || !cfApiToken) {
     .join("\n\n");
 
   let recallCalled = false;
-  const wrappedTools = memoryTools(store).map((t) => ({
+  const wrappedTools = makeMemoryTools(store).map((t) => ({
     ...t,
     invoke: async (input: Record<string, unknown>) => {
       if (t.name === "recall_memory") recallCalled = true;
