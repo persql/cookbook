@@ -92,7 +92,7 @@ try {
 
     const agent = new Agent({
       name: "ci-agent",
-      model: "gpt-4o-mini",
+      model: openaiModel,
       instructions: `You are a helpful assistant.\n\nMEMORIES:\n${memSection}\n\nAnswer questions covered above directly without calling any tool first.`,
       tools: makeMemoryTools(store),
     });
