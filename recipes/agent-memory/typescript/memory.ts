@@ -86,9 +86,12 @@ export class MemoryStore {
 
   async recall(query: string, limit = 10): Promise<MemoryRow[]> {
     if (!query.trim()) return this.index({ limit });
+    // FTS5 indexes name/description/body only; join back to the base
+    // table to project non-indexed columns like `type`.
     const { data } = await this.db.query<MemoryRow>(
-      "SELECT name, description, type, body FROM ctx_memory_fts" +
-        " WHERE ctx_memory_fts MATCH ? ORDER BY rank LIMIT ?",
+      "SELECT m.name, m.description, m.type, m.body FROM ctx_memory_fts" +
+        " JOIN ctx_memory m ON m.rowid = ctx_memory_fts.rowid" +
+        " WHERE ctx_memory_fts MATCH ? ORDER BY ctx_memory_fts.rank LIMIT ?",
       [query, limit]
     );
     return data;

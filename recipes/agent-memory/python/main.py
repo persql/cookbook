@@ -12,25 +12,8 @@ import os
 import time
 from uuid import uuid4
 
-from dotenv import load_dotenv
-from openai import AsyncOpenAI
-from agents import Agent, Runner, function_tool, set_default_openai_client
+from agents import Agent, Runner, function_tool
 from persql import PerSQL
-
-load_dotenv()
-
-CF_ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-CF_API_TOKEN = os.environ["CLOUDFLARE_API_TOKEN"]
-PERSQL_TOKEN = os.environ["PERSQL_TOKEN"]
-PERSQL_DATABASE = os.environ["PERSQL_DATABASE"]
-
-# Point the Agents SDK at Cloudflare Workers AI.
-set_default_openai_client(
-    AsyncOpenAI(
-        api_key=CF_API_TOKEN,
-        base_url=f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/v1",
-    )
-)
 
 MODEL = "@cf/meta/llama-3.3-70b-instruct"
 
@@ -131,9 +114,12 @@ class MemoryStore:
     def recall(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():
             return self.index(limit=limit)
+        # FTS5 indexes name/description/body only; join back to the base
+        # table to project non-indexed columns like `type`.
         result = self._db.query(
-            "SELECT name, description, type, body FROM ctx_memory_fts"
-            " WHERE ctx_memory_fts MATCH ? ORDER BY rank LIMIT ?",
+            "SELECT m.name, m.description, m.type, m.body FROM ctx_memory_fts"
+            " JOIN ctx_memory m ON m.rowid = ctx_memory_fts.rowid"
+            " WHERE ctx_memory_fts MATCH ? ORDER BY ctx_memory_fts.rank LIMIT ?",
             [query, limit],
         )
         return result["data"]
@@ -183,7 +169,26 @@ def make_memory_tools(store: MemoryStore):
 # ---------------------------------------------------------------------------
 
 async def main() -> None:
-    store = MemoryStore(token=PERSQL_TOKEN, database=PERSQL_DATABASE)
+    from dotenv import load_dotenv
+    from openai import AsyncOpenAI
+    from agents import set_default_openai_client
+
+    load_dotenv()
+
+    cf_account_id = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+    cf_api_token = os.environ["CLOUDFLARE_API_TOKEN"]
+    persql_token = os.environ["PERSQL_TOKEN"]
+    persql_database = os.environ["PERSQL_DATABASE"]
+
+    # Point the Agents SDK at Cloudflare Workers AI.
+    set_default_openai_client(
+        AsyncOpenAI(
+            api_key=cf_api_token,
+            base_url=f"https://api.cloudflare.com/client/v4/accounts/{cf_account_id}/ai/v1",
+        )
+    )
+
+    store = MemoryStore(token=persql_token, database=persql_database)
     store.init()
 
     memories = store.index()
