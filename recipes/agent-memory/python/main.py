@@ -141,23 +141,42 @@ class MemoryStore:
 # ---------------------------------------------------------------------------
 
 def make_memory_tools(store: MemoryStore):
+    # CF Workers AI's OpenAI-compat validator rejects any tool param without
+    # a description, so every Args entry below is load-bearing — the SDK
+    # parses these docstrings into per-parameter JSON-schema descriptions.
     @function_tool
     def remember_memory(name: str, description: str, body: str, type: str = "project") -> str:
         """Save or update a named memory. Use for facts worth keeping across sessions:
-        schema details, user preferences, project decisions. Same name overwrites."""
+        schema details, user preferences, project decisions. Same name overwrites.
+
+        Args:
+            name: Short kebab-case key.
+            description: One-line summary.
+            body: Full content of the memory.
+            type: Memory category (user, feedback, project, or reference).
+        """
         store.remember(name=name, description=description, body=body, type=type)
         return json.dumps({"saved": name})
 
     @function_tool
     def recall_memory(query: str, limit: int = 10) -> str:
         """Search memories by keyword (BM25-ranked). Use when the answer might be
-        in memory before querying a live data source."""
+        in memory before querying a live data source.
+
+        Args:
+            query: Keyword search terms.
+            limit: Max results to return.
+        """
         rows = store.recall(query, limit=limit)
         return json.dumps({"memories": rows})
 
     @function_tool
     def forget_memory(name: str) -> str:
-        """Delete a saved memory by name."""
+        """Delete a saved memory by name.
+
+        Args:
+            name: The memory's kebab-case key.
+        """
         store.forget(name)
         return json.dumps({"deleted": name})
 
@@ -171,7 +190,7 @@ def make_memory_tools(store: MemoryStore):
 async def main() -> None:
     from dotenv import load_dotenv
     from openai import AsyncOpenAI
-    from agents import set_default_openai_client
+    from agents import OpenAIChatCompletionsModel, set_tracing_disabled
 
     load_dotenv()
 
@@ -180,13 +199,15 @@ async def main() -> None:
     persql_token = os.environ["PERSQL_TOKEN"]
     persql_database = os.environ["PERSQL_DATABASE"]
 
-    # Point the Agents SDK at Cloudflare Workers AI.
-    set_default_openai_client(
-        AsyncOpenAI(
-            api_key=cf_api_token,
-            base_url=f"https://api.cloudflare.com/client/v4/accounts/{cf_account_id}/ai/v1",
-        )
+    # No OpenAI key here, so the default trace exporter would 401.
+    set_tracing_disabled(True)
+    cf_client = AsyncOpenAI(
+        api_key=cf_api_token,
+        base_url=f"https://api.cloudflare.com/client/v4/accounts/{cf_account_id}/ai/v1",
     )
+    # Wrap explicitly: a bare "@cf/..." model string trips the SDK's
+    # provider-prefix parser ("Unknown prefix: @cf").
+    model = OpenAIChatCompletionsModel(model=MODEL, openai_client=cf_client)
 
     store = MemoryStore(token=persql_token, database=persql_database)
     store.init()
@@ -203,7 +224,7 @@ async def main() -> None:
 
     agent = Agent(
         name="assistant",
-        model=MODEL,
+        model=model,
         instructions=f"""You are a helpful assistant with persistent memory.
 
 MEMORIES — facts saved from previous sessions. Answer questions covered here \

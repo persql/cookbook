@@ -117,10 +117,15 @@ export function makeMemoryTools(store: MemoryStore) {
       name: "remember_memory",
       description:
         "Save or update a named memory. Use for facts worth keeping across sessions: schema details, user preferences, project decisions. Same name overwrites.",
+      // CF Workers AI's OpenAI-compat validator rejects any tool param
+      // without a description — every field below must be .describe()'d.
       parameters: z.object({
         name: z.string().describe("Short kebab-case key"),
         description: z.string().describe("One-line summary"),
-        type: z.enum(["user", "feedback", "project", "reference"]).default("project"),
+        type: z
+          .enum(["user", "feedback", "project", "reference"])
+          .default("project")
+          .describe("Memory category"),
         body: z.string().describe("Full content of the memory"),
       }),
       execute: async ({ name, description, type, body }) => {
@@ -133,8 +138,8 @@ export function makeMemoryTools(store: MemoryStore) {
       description:
         "Search memories by keyword (BM25-ranked). Use when the answer might be in memory before querying a live data source.",
       parameters: z.object({
-        query: z.string(),
-        limit: z.number().int().positive().default(10),
+        query: z.string().describe("Keyword search terms"),
+        limit: z.number().int().positive().default(10).describe("Max results to return"),
       }),
       execute: async ({ query, limit }) => {
         const rows = await store.recall(query, limit);
@@ -144,7 +149,7 @@ export function makeMemoryTools(store: MemoryStore) {
     tool({
       name: "forget_memory",
       description: "Delete a saved memory by name.",
-      parameters: z.object({ name: z.string() }),
+      parameters: z.object({ name: z.string().describe("The memory's kebab-case key") }),
       execute: async ({ name }) => {
         await store.forget(name);
         return JSON.stringify({ deleted: name });

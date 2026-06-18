@@ -82,13 +82,24 @@ async def main() -> None:
             print("[ci] CF env vars not set — skipping agent turn")
         else:
             from openai import AsyncOpenAI
-            from agents import Agent, Runner, set_default_openai_client
+            from agents import (
+                Agent,
+                OpenAIChatCompletionsModel,
+                Runner,
+                set_tracing_disabled,
+            )
 
-            set_default_openai_client(
-                AsyncOpenAI(
-                    api_key=CF_API_TOKEN,
-                    base_url=f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/v1",
-                )
+            # No OpenAI key here, so the default trace exporter would 401.
+            set_tracing_disabled(True)
+            cf_client = AsyncOpenAI(
+                api_key=CF_API_TOKEN,
+                base_url=f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/v1",
+            )
+            # Wrap explicitly: a bare "@cf/..." model string trips the SDK's
+            # provider-prefix parser ("Unknown prefix: @cf").
+            model = OpenAIChatCompletionsModel(
+                model="@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+                openai_client=cf_client,
             )
 
             memories = store.index()
@@ -99,7 +110,7 @@ async def main() -> None:
 
             agent = Agent(
                 name="ci-agent",
-                model="@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+                model=model,
                 instructions=(
                     "You are a helpful assistant.\n\n"
                     f"MEMORIES:\n{mem_section}\n\n"

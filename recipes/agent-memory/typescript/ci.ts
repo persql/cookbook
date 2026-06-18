@@ -1,7 +1,7 @@
 import "dotenv/config";
 import assert from "node:assert/strict";
 import OpenAI from "openai";
-import { Agent, run, setDefaultOpenAIClient } from "@openai/agents";
+import { Agent, run, setDefaultOpenAIClient, setTracingDisabled } from "@openai/agents";
 import { PerSQL } from "@persql/sdk";
 import { MemoryStore, makeMemoryTools } from "./memory.js";
 
@@ -70,6 +70,8 @@ try {
         baseURL: `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1`,
       }) as unknown as Parameters<typeof setDefaultOpenAIClient>[0]
     );
+    // No OpenAI key here, so the default trace exporter would 401.
+    setTracingDisabled(true);
 
     const memories = await store.index();
     const memSection = memories
