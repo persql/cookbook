@@ -34,6 +34,9 @@ jobs:
           - agent-memory
           - langgraph-checkpointer
           - openai-agents-session
+          - drizzle
+          - kysely
+          - prisma
     steps:
       - uses: actions/checkout@v4
 

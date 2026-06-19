@@ -14,6 +14,9 @@ Each recipe is self-contained, ships TypeScript and/or Python implementations, a
 | [google-adk-session](recipes/google-adk-session/) | Py | Google ADK sessions, events, and state on a PerSQL session service |
 | [agent-framework-history](recipes/agent-framework-history/) | Py | Microsoft Agent Framework message history on a PerSQL history provider |
 | [strands-session](recipes/strands-session/) | Py | AWS Strands sessions, agents, and messages on a PerSQL session store |
+| [drizzle](recipes/drizzle/) | TS | Drizzle ORM query builder against a PerSQL database via the sqlite-proxy driver |
+| [kysely](recipes/kysely/) | TS | Kysely typed SQL, with `db.transaction()` shipped as one batched round-trip |
+| [prisma](recipes/prisma/) | TS | Prisma Client pointed at a PerSQL database through the driver adapter |
 
 ## Prerequisites
 

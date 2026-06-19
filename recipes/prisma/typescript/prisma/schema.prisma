@@ -1,0 +1,15 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Widget {
+  id      Int     @id @default(autoincrement())
+  name    String
+  price   Float
+  inStock Boolean @default(true)
+}
