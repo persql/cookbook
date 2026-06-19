@@ -9,6 +9,7 @@ Each recipe is self-contained, ships TypeScript and/or Python implementations, a
 | Recipe | Languages | What it shows |
 |---|---|---|
 | [agent-memory](recipes/agent-memory/) | TS · Py | Persistent structured memory (FTS5) across agent sessions, with the OpenAI Agents SDK |
+| [context](recipes/context/) | TS | Shared agent memory via `@persql/context` — named UPSERT, FTS5 recall, entity graph, `memoryTools()` |
 | [langgraph-checkpointer](recipes/langgraph-checkpointer/) | TS · Py | LangGraph agent state persisted across restarts via the PerSQL checkpointer |
 | [openai-agents-session](recipes/openai-agents-session/) | TS · Py | OpenAI Agents SDK conversation history persisted via a PerSQL session |
 | [google-adk-session](recipes/google-adk-session/) | Py | Google ADK sessions, events, and state on a PerSQL session service |

@@ -37,6 +37,7 @@ jobs:
           - drizzle
           - kysely
           - prisma
+          - context
     steps:
       - uses: actions/checkout@v4
 
