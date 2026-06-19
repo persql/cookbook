@@ -42,11 +42,8 @@ a shadow database, for which a schema-only PerSQL branch works well
   from `@persql/sdk`.
 - **`Bytes` columns are not supported** — store binary as base64 in a `String`.
 
-## Implementations
-
-| Language | Adapter | File |
-|---|---|---|
-| TypeScript | `@persql/prisma` | [typescript/](typescript/) |
+The runnable code — Prisma schema, demo, and headless test — is in
+[`typescript/`](typescript/).
 
 ## What you'll see
 

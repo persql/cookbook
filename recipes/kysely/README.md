@@ -30,11 +30,8 @@ batch result is discarded, **reads inside a transaction are not supported** —
 run any `SELECT` / `RETURNING` outside the transaction (the dialect throws a
 clear error if you don't).
 
-## Implementations
-
-| Language | Adapter | File |
-|---|---|---|
-| TypeScript | `@persql/kysely` | [typescript/](typescript/) |
+The runnable code — `DB` types, demo, and headless test — is in
+[`typescript/`](typescript/).
 
 ## What you'll see
 

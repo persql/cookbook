@@ -31,11 +31,8 @@ The `sqlite-proxy` driver runs one statement per round-trip and has no
 interactive transactions — for an atomic multi-statement write, use
 `db.batch(statements, { transaction: true })` from `@persql/sdk`.
 
-## Implementations
-
-| Language | Adapter | File |
-|---|---|---|
-| TypeScript | `@persql/drizzle` | [typescript/](typescript/) |
+The runnable code — schema, demo, and headless test — is in
+[`typescript/`](typescript/).
 
 ## What you'll see
 
