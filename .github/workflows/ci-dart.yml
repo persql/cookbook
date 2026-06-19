@@ -1,0 +1,55 @@
+name: CI — Dart
+
+on:
+  push:
+    paths:
+      - "recipes/*/dart/**"
+      - ".github/workflows/ci-dart.yml"
+  pull_request:
+    paths:
+      - "recipes/*/dart/**"
+      - ".github/workflows/ci-dart.yml"
+  # Fired by the persql monorepo after a deploy/publish completes, so the
+  # recipes are re-tested against the freshly shipped SDK + live API.
+  repository_dispatch:
+    types: [persql-updated]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-dart-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for persql/setup-db OIDC
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        recipe:
+          - per-user-database
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - run: dart pub get
+        working-directory: recipes/${{ matrix.recipe }}/dart
+
+      - run: dart analyze --fatal-infos
+        working-directory: recipes/${{ matrix.recipe }}/dart
+
+      # Provision a repo-scoped PerSQL database via OIDC (no secret needed).
+      # Requires the PerSQL GitHub App on this repo; if absent, the ci script
+      # runs its offline (PKCE) checks only — the Dart SDK has no local mode.
+      - uses: persql/setup-db@v1
+        id: persql
+        continue-on-error: true
+
+      - run: dart run bin/ci.dart
+        working-directory: recipes/${{ matrix.recipe }}/dart
+        env:
+          PERSQL_TOKEN: ${{ steps.persql.outputs.token }}
+          PERSQL_DATABASE: ${{ steps.persql.outputs.namespace }}/${{ steps.persql.outputs.database }}

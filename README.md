@@ -18,12 +18,14 @@ Each recipe is self-contained, ships TypeScript and/or Python implementations, a
 | [drizzle](recipes/drizzle/) | TS | Drizzle ORM query builder against a PerSQL database via the sqlite-proxy driver |
 | [kysely](recipes/kysely/) | TS | Kysely typed SQL, with `db.transaction()` shipped as one batched round-trip |
 | [prisma](recipes/prisma/) | TS | Prisma Client pointed at a PerSQL database through the driver adapter |
+| [per-user-database](recipes/per-user-database/) | Dart | Sign in with PerSQL (OAuth 2.1 + PKCE) and give each user their own private database |
 
 ## Prerequisites
 
 - A PerSQL account and token — [console.persql.com](https://console.persql.com)
 - Node 20+ for TypeScript recipes
 - Python 3.11+ for Python recipes
+- Dart 3.4+ for Dart recipes
 
 ## Running a recipe
 
@@ -41,6 +43,12 @@ cd recipes/<name>/python
 cp .env.example .env
 uv sync            # some recipes: `uv sync --extra interactive` to run the agent
 uv run python main.py
+
+# Dart
+cd recipes/<name>/dart
+cp .env.example .env
+dart pub get
+dart run bin/main.dart
 ```
 
-Each recipe also ships a headless `ci.ts` / `ci.py` that runs without input — local in-process SQLite by default, or against a real PerSQL database (a fresh branch per run) when `PERSQL_TOKEN` is set. These are what CI exercises.
+Each recipe also ships a headless `ci.ts` / `ci.py` / `ci.dart` that runs without input. The TypeScript and Python scripts default to local in-process SQLite, or test against a real PerSQL database (a fresh branch per run) when `PERSQL_TOKEN` is set. The Dart SDK has no local mode, so its `ci.dart` runs offline checks always and tests live only when a database is provided. These are what CI exercises.

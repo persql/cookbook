@@ -7,3 +7,5 @@ __pycache__/
 .venv/
 .uv/
 *.egg-info/
+.dart_tool/
+pubspec.lock

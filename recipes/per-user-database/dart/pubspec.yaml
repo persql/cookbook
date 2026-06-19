@@ -1,0 +1,10 @@
+name: per_user_database
+description: Sign in with PerSQL and use a per-user database from Dart.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.4.0
+
+dependencies:
+  persql: ^0.1.1
