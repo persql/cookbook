@@ -22,11 +22,18 @@ async function federate() {
   try {
     return await federateFromGitHubActions(apiUrl);
   } catch (e) {
-    // During rollout the endpoint may not be deployed yet — a 404 means
-    // "route not present", which we treat as skip-not-fail. Every other
-    // failure (signature, 4xx/5xx) is a real regression and throws.
-    if (e instanceof FederateError && e.status === 404) {
-      console.log("::warning::/v1/identity/federate not deployed yet — skipping");
+    // During rollout the endpoint may not exist yet: POST /v1/identity/federate
+    // then falls through to the /v1 bearer chain, which rejects the OIDC JWT
+    // as a bad token (401 "Invalid token format") or 404. Treat route-absent
+    // as skip-not-fail. A real failure from the *deployed* route says "OIDC
+    // verification failed" — that must fail loudly, so it is never skipped.
+    const routeAbsent =
+      e instanceof FederateError &&
+      (e.status === 404 || (e.status === 401 && !e.message.includes("OIDC")));
+    if (routeAbsent) {
+      console.log(
+        `::warning::/v1/identity/federate not live yet (HTTP ${(e as FederateError).status}) — skipping`
+      );
       process.exit(0);
     }
     throw e;
