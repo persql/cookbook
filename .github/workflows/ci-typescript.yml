@@ -38,6 +38,7 @@ jobs:
           - kysely
           - prisma
           - context
+          - agent-self-signup
     steps:
       - uses: actions/checkout@v4
 
