@@ -37,6 +37,7 @@ jobs:
           - google-adk-session
           - agent-framework-history
           - strands-session
+          - hermes-memory
     steps:
       - uses: actions/checkout@v4
 

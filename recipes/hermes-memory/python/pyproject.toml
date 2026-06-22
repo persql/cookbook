@@ -1,0 +1,12 @@
+[project]
+name = "hermes-memory-py"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = [
+    "hermes-persql >= 0.1",
+    "persql >= 0.4",
+    "python-dotenv >= 1.0",
+]
+
+[tool.uv]
+package = false
