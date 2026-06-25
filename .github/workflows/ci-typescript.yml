@@ -32,6 +32,7 @@ jobs:
       matrix:
         recipe:
           - agent-memory
+          - scheduled-data-agent
           - langgraph-checkpointer
           - openai-agents-session
           - drizzle
